@@ -86,3 +86,21 @@ test('exact gap boundaries 5 and 80 included, 81 excluded',()=>{
   assert.equal(signals.some(s=>s.first===10 && s.second===10+gap),gap<=80);
  }
 });
+test('market classification follows explicit Bybit metadata only',async()=>{
+ const {matchesMarket}=await import('../src/scanner/market.js');
+ for(const type of ['', 'innovation']) assert.equal(matchesMarket(type,'crypto'),true);
+ for(const type of ['stock','ETF','commodity','forex',undefined,'future-type']) assert.equal(matchesMarket(type,'crypto'),false);
+ assert.equal(matchesMarket('stock','stock'),true);
+ for(const type of ['', 'innovation','ETF',undefined]) assert.equal(matchesMarket(type,'stock'),false);
+ for(const type of ['', 'stock','ETF',undefined,'future-type']) assert.equal(matchesMarket(type,'all'),true);
+ assert.throws(()=>matchesMarket('stock','bogus'),/지원하지/);
+});
+test('market filtering precedes kline calls, counters and results follow selected market',async()=>{
+ for(const market of ['crypto','stock','all']) {
+  const items=[{symbol:'BTCUSDT',symbolType:''},{symbol:'NEWUSDT',symbolType:'innovation'},{symbol:'SHAREUSDT',symbolType:'stock'},{symbol:'ETFUSDT',symbolType:'ETF'},{symbol:'UNKNOWNUSDT'}];
+  const calls=[];const api={requests:0,instruments:async()=>items,request:async function(p,params){this.requests++;if(p==='time')return {timeSecond:String(201*I/1000)};if(p==='tickers')return {list:items.map(i=>({...i,turnover24h:'10000000',lastPrice:'10'}))};calls.push(params.symbol);return {list:rows()};}};
+  const result=await new Scanner(api).run('ALL',()=>{},market);
+  const expected=market==='crypto'?['BTCUSDT','NEWUSDT']:market==='stock'?['SHAREUSDT']:items.map(i=>i.symbol);
+  assert.deepEqual(calls,expected);assert.equal(result.total,expected.length);assert.equal(result.done,expected.length);assert.equal(result.status,'complete');assert.equal(result.market,market);
+ }
+});

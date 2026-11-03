@@ -1,13 +1,15 @@
 import { Bybit, candlesFrom, abortError, pause } from '../api/bybit.js';
+import { matchesMarket, MARKET_LABELS } from './market.js';
 import { detect, INTERVAL } from '../indicators/divergence.js';
 export class Scanner {
   constructor(api = new Bybit()) { this.api = api; this.active = false; this.cache = new Map(); }
   cancel() { this.controller?.abort(); }
-  async run(direction = 'ALL', onProgress = () => {}) {
+  async run(direction = 'ALL', onProgress = () => {}, market = 'all') {
     if (this.active) throw new Error('검색이 이미 진행 중입니다.');
+    if (!Object.hasOwn(MARKET_LABELS, market)) throw new Error('지원하지 않는 시장 선택입니다.');
     this.active = true; this.controller = new AbortController();
     const signal = this.controller.signal, started = Date.now(), initialRequests = this.api.requests;
-    const state = { status:'running', phase:'Bybit 서버 시간 확인', total:0, done:0, failures:[], results:[], warnings:[], cutoff:0, cacheHits:0, requests:0, started };
+    const state = { market, status:'running', phase:'Bybit 서버 시간 확인', total:0, done:0, failures:[], results:[], warnings:[], cutoff:0, cacheHits:0, requests:0, started };
     const emit = () => { state.elapsed = Date.now() - started; state.requests = this.api.requests - initialRequests; onProgress({...state}); };
     emit();
     try {
@@ -19,7 +21,10 @@ export class Scanner {
       } catch (e) { if (signal.aborted) throw e; state.cutoff = Date.now(); state.warnings.push(`서버 시간 조회 실패: 시스템 UTC 사용. ${e.message}`); }
       state.lastCandle = Math.floor(state.cutoff / INTERVAL) * INTERVAL - INTERVAL;
       state.phase = '전체 종목 및 거래대금 조회'; emit();
-      const instruments = await this.api.instruments(signal);
+      const allInstruments = await this.api.instruments(signal);
+      const instruments = allInstruments.filter(item => matchesMarket(item.symbolType, market));
+      const unknown = allInstruments.filter(item => typeof item.symbolType !== 'string' || !['', 'innovation', 'stock', 'ETF', 'commodity', 'forex'].includes(item.symbolType)).length;
+      if (market !== 'all' && unknown) state.warnings.push(`시장 분류 누락·미확인 ${unknown}종목은 선택 시장에서 제외했습니다. 전체 선택 시 포함됩니다.`);
       const tickerResult = await this.api.request('tickers', {category:'linear'}, signal);
       if (!Array.isArray(tickerResult.list)) throw new Error('시세 응답 구조 변경');
       const tickers = new Map(tickerResult.list.map(t => [t.symbol,t]));

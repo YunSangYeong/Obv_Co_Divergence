@@ -34,3 +34,23 @@ test('production assets load and refresh under GitHub Pages subpath',async({page
  });await new Promise(resolve=>server.listen(4180,'127.0.0.1',resolve));
  try{await page.goto('http://127.0.0.1:4180/Obv_Co_Divergence/');await expect(page.locator('#start')).toBeVisible();await page.reload();await expect(page.locator('#start')).toBeEnabled();}finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('market buttons filter requests, persist selection and lock during scan',async({page})=>{
+ const calls=[];
+ await page.route('https://api.bybit.com/**',async route=>{
+  const url=new URL(route.request().url());const items=[{symbol:'BTCUSDT',symbolType:''},{symbol:'SHAREUSDT',symbolType:'stock'},{symbol:'ETFUSDT',symbolType:'ETF'}];
+  let result;
+  if(url.pathname.endsWith('/time'))result={timeSecond:String(201*900)};
+  else if(url.pathname.endsWith('/instruments-info'))result={list:items.map(i=>({...i,quoteCoin:'USDT',settleCoin:'USDT',contractType:'LinearPerpetual',status:'Trading'}))};
+  else if(url.pathname.endsWith('/tickers'))result={list:items.map(i=>({...i,lastPrice:'10',turnover24h:'10000000'}))};
+  else {calls.push(url.searchParams.get('symbol'));await new Promise(r=>setTimeout(r,200));result={list:Array.from({length:201},(_,i)=>[i*900000,10,12,8,10,10,100].map(String)).reverse()};}
+  await route.fulfill({headers:{'access-control-allow-origin':'*'},json:{retCode:0,result}});
+ });
+ await page.goto('/');await page.getByRole('button',{name:'주식만',exact:true}).click();await page.reload();
+ await expect(page.getByRole('button',{name:'주식만',exact:true})).toHaveAttribute('aria-pressed','true');
+ for(const [label,expected] of [['주식만',['SHAREUSDT']],['코인만',['BTCUSDT']],['전체',['ETFUSDT']]]) {
+  calls.length=0;await page.getByRole('button',{name:label,exact:true}).click();await page.click('#start');
+  await expect(page.getByRole('button',{name:'전체',exact:true})).toBeDisabled();
+  await expect(page.locator('#start')).toBeEnabled();expect(calls.sort()).toEqual(expected.sort());await expect(page.locator('#status')).toContainText(`탐색 시장: ${label}`);
+ }
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
