@@ -12,27 +12,93 @@ test('mobile initial no requests, error handling and controls',async({page})=>{
 test('cancel active request',async({page})=>{
  await page.route('https://api.bybit.com/**',()=>{});await page.goto('/');await page.click('#start');await page.click('#cancel');await expect(page.locator('#status')).toContainText('사용자가 검색을 취소');await expect(page.locator('#start')).toBeEnabled();
 });
-test('real scanner pipeline with deterministic fixture, mobile results and previous signals',async({page})=>{
- const I=900000, count=500, cutoff=count*I;
- const rows=Array.from({length:count},(_,i)=>[String(i*I),'10','12','8','10','10','100']);
- rows[480]=[String(480*I),'10','12','6','7','100','1000'];
- rows[490]=[String(490*I),'10','12','5','11','100','1000'];rows.reverse();
- await page.route('https://api.bybit.com/**',async route=>{
-  const u=new URL(route.request().url());let result;
-  if(u.pathname.endsWith('/time'))result={timeSecond:String(cutoff/1000)};
-  else if(u.pathname.endsWith('/instruments-info'))result={list:[{symbol:'BTCUSDT',quoteCoin:'USDT',settleCoin:'USDT',contractType:'LinearPerpetual',status:'Trading'}]};
-  else if(u.pathname.endsWith('/tickers'))result={list:[{symbol:'BTCUSDT',turnover24h:'20000000',lastPrice:'10'}]};
-  else result={list:rows};
-  await route.fulfill({headers:{'access-control-allow-origin':'*'},json:{retCode:0,result}});
+async function routeCandles(page, { beforeOther } = {}) {
+ const interval = 900000;
+ const rows = Array.from({length: 501}, (_, i) => [i * interval, 10, 12, 8, 10, 10, 100].map(String));
+ for (const [i, low, close, volume] of [[478, 6, 7, 100], [485, 8, 8, 10], [486, 5, 9, 100], [494, 4, 11, 100], [500, 1, 2, 9999]]) {
+  rows[i] = [i * interval, 10, 12, low, close, volume, 100].map(String);
+ }
+ rows.reverse();
+ const symbols = beforeOther ? ['BTCUSDT', 'ETHUSDT'] : ['BTCUSDT'];
+ await page.route('https://api.bybit.com/**', async route => {
+  const url = new URL(route.request().url());
+  let result;
+  if (url.pathname.endsWith('/time')) result = {timeSecond: String(500 * interval / 1000)};
+  else if (url.pathname.endsWith('/instruments-info')) result = {list: symbols.map(symbol => ({symbol, quoteCoin: 'USDT', settleCoin: 'USDT', contractType: 'LinearPerpetual', status: 'Trading'}))};
+  else if (url.pathname.endsWith('/tickers')) result = {list: symbols.map(symbol => ({symbol, turnover24h: symbol === 'BTCUSDT' ? '20000000' : '30000000', lastPrice: '10'}))};
+  else {
+   if (url.searchParams.get('symbol') === 'ETHUSDT') await beforeOther;
+   result = {list: rows};
+  }
+  await route.fulfill({headers: {'access-control-allow-origin': '*'}, json: {retCode: 0, result}});
  });
- await page.goto('/');await page.click('#start');await expect(page.locator('#status')).toContainText('검색 완료');await expect(page.locator('#status')).toContainText('정상 분석');await expect(page.locator('#results')).toContainText('BTCUSDT');await expect(page.locator('#results')).toContainText('LONG');await expect(page.locator('.card-title')).toHaveAttribute('target','_blank');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/obv-mobile-results.png',fullPage:true});await expect(page.locator('#status')).toContainText('API 요청 4회');
+}
+
+test('mobile card uses confirmed scanner data and preserves earlier signal through progress', async ({page}) => {
+ let releaseOther;
+ const beforeOther = new Promise(resolve => { releaseOther = resolve; });
+ await routeCandles(page, {beforeOther});
+ await page.setViewportSize({width: 320, height: 740});
+ await page.goto('/');
+ await page.click('#start');
+ const card = page.locator('.card').filter({has: page.getByRole('heading', {name: 'BTCUSDT'})});
+ const chart = card.getByRole('img');
+ const select = card.getByLabel('확정 신호');
+ try {
+  await expect(chart).toBeVisible();
+  await expect(card.locator('.card-title')).toHaveAttribute('target', '_blank');
+  await expect(select).toHaveValue('0');
+  for (const [name, values] of [['가격 · 15분', [5, 4]], ['OBV', [0, 110]], ['CO', [-10.472159110152106, 22.6492430315534]]]) {
+   const panel = chart.locator(`[data-panel="${name}"]`);
+   await expect(panel.locator('.plot-divergence')).toHaveCount(1);
+   const positions = await panel.locator('.plot-pivot').evaluateAll(points => points.map(p => [Number(p.dataset.value), p.getAttribute('cx'), p.getAttribute('cy')]));
+   expect(positions.map(([value]) => value)).toEqual(values);
+   const line = panel.locator('.plot-divergence');
+   await expect(line).toHaveAttribute('x1', positions[0][1]);
+   await expect(line).toHaveAttribute('y1', positions[0][2]);
+   await expect(line).toHaveAttribute('x2', positions[1][1]);
+   await expect(line).toHaveAttribute('y2', positions[1][2]);
+   await expect(panel.locator('.plot-confirm')).toHaveAttribute('d', /^M252 /);
+  }
+  await expect(chart.locator('.plot-candle')).toHaveCount(26);
+  await expect(chart.locator('text').filter({hasText: /^KST$/})).toBeVisible();
+  await expect(card.locator('figcaption')).toContainText('14:00:00 KST');
+  await expect(chart.locator('.plot-divergence').first()).toHaveCSS('stroke', 'rgb(100, 223, 174)');
+  await select.selectOption('1');
+  await select.focus();
+  await expect(card.locator('figcaption')).toContainText('12:00:00 KST');
+  await expect(chart.locator('[data-panel="가격 · 15분"] .plot-pivot').first()).toHaveAttribute('data-value', '6');
+  await expect(chart.locator('.plot-confirm').first()).not.toHaveAttribute('d', /^M252 /);
+  await chart.evaluate(node => { node.dataset.preserved = 'yes'; });
+  await expect(page.locator('#status')).toContainText(/경과 시간[1-9][0-9]*\.[0-9]초/);
+  await expect(chart).toHaveAttribute('data-preserved', 'yes');
+ } finally {
+  releaseOther();
+ }
+ await expect(page.locator('#status')).toContainText('검색 완료');
+ await expect(page.locator('#status')).toContainText('API 요청 5회');
+ await expect(page.locator('.card').first()).toContainText('ETHUSDT');
+ await expect(select).toHaveValue('1');
+ await expect(select).toBeFocused();
+ await expect(chart).toHaveAttribute('data-preserved', 'yes');
+ expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+ await chart.screenshot({path: '/tmp/obv-mobile-chart.png'});
 });
+
 test('production assets load and refresh under GitHub Pages subpath',async({page})=>{
  const {createServer}=await import('node:http');const {readFile}=await import('node:fs/promises');
  const server=createServer(async(req,res)=>{
   try{const path=req.url.replace(/^\/Obv_Co_Divergence\//,'');if(path===req.url){res.writeHead(404).end();return;}const file=path||'index.html';const data=await readFile(`dist/${file}`);res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(data);}catch{res.writeHead(404).end();}
  });await new Promise(resolve=>server.listen(4180,'127.0.0.1',resolve));
- try{await page.goto('http://127.0.0.1:4180/Obv_Co_Divergence/');await expect(page.locator('#start')).toBeVisible();await page.reload();await expect(page.locator('#start')).toBeEnabled();}finally{await new Promise(resolve=>server.close(resolve));}
+ try{
+  await routeCandles(page);
+  await page.goto('http://127.0.0.1:4180/Obv_Co_Divergence/');
+  await page.reload();
+  await page.click('#start');
+  await expect(page.locator('#status')).toContainText('검색 완료');
+  await expect(page.getByRole('img', {name: /LONG 가격, OBV, CO/})).toBeVisible();
+  await expect(page.locator('.plot-divergence')).toHaveCount(3);
+ }finally{await new Promise(resolve=>server.close(resolve));}
 });
 test('market buttons filter requests, persist selection and lock during scan',async({page})=>{
  const calls=[];

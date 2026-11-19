@@ -1,6 +1,6 @@
 import { Bybit, candlesFrom, abortError, pause } from '../api/bybit.js';
 import { matchesMarket, MARKET_LABELS } from './market.js';
-import { detect, INTERVAL } from '../indicators/divergence.js';
+import { analyze, INTERVAL } from '../indicators/divergence.js';
 export class Scanner {
   constructor(api = new Bybit()) { this.api = api; this.active = false; this.cache = new Map(); }
   cancel() { this.controller?.abort(); }
@@ -50,8 +50,8 @@ export class Scanner {
               candles = candlesFrom(r.list,state.cutoff);
               this.cache.set(target.symbol,{lastCandle:state.lastCandle,saved:Date.now(),candles});
             }
-            const signals = detect(candles,{direction});
-            if (signals.length) state.results.push({...target, signals});
+            const analysis = analyze(candles, direction);
+            if (analysis.signals.length) state.results.push({...target, ...analysis});
             state.done++;
           } catch (e) { if (signal.aborted) throw e; state.failures.push({symbol:target.symbol,reason:e.message}); }
           emit();

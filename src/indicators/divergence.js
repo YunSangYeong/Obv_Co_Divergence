@@ -2,6 +2,12 @@ import { obv } from './obv.js';
 import { chaikin } from './chaikin.js';
 import { pivots } from './pivots.js';
 export const INTERVAL = 900000;
+
+export function analyze(candles, direction) {
+  const indicators = { obv: obv(candles), co: chaikin(candles) };
+  return { candles, indicators, signals: detect(candles, { direction, indicators }) };
+}
+
 export function detect(candles, { direction = 'ALL', recent = 10, warmup = 100, minGap = 5, maxGap = 80, left = 5, right = 5, indicators } = {}) {
   const ov = indicators?.obv ?? obv(candles), co = indicators?.co ?? chaikin(candles);
   const signals = [];

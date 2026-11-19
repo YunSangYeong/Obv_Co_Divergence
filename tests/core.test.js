@@ -7,6 +7,7 @@ import { detect, INTERVAL as I } from '../src/indicators/divergence.js';
 import { Bybit, candlesFrom } from '../src/api/bybit.js';
 import { Scanner } from '../src/scanner/scanner.js';
 import { chartLinks } from '../src/utils/format.js';
+import { chartWindow, signalChart } from '../src/chart.js';
 const bars = n => Array.from({length:n},(_,i)=>({time:i*I,open:10,high:12,low:8,close:10,volume:10}));
 function fixture(side='LONG') {
   const c=bars(40), ov=Array(40).fill(0),co=Array(40).fill(0), field=side==='LONG'?'low':'high';
@@ -103,4 +104,26 @@ test('market filtering precedes kline calls, counters and results follow selecte
   const expected=market==='crypto'?['BTCUSDT','NEWUSDT']:market==='stock'?['SHAREUSDT']:items.map(i=>i.symbol);
   assert.deepEqual(calls,expected);assert.equal(result.total,expected.length);assert.equal(result.done,expected.length);assert.equal(result.status,'complete');assert.equal(result.market,market);
  }
+});
+
+test('chart window keeps the full pivot gap, precomputed indicators and final confirmation', () => {
+ const candles = bars(220);
+ const indicators = {obv: candles.map((_, i) => 1000 + i), co: candles.map((_, i) => -i / 10)};
+ const signal = {side: 'SHORT', first: 134, second: 214, age: 0, confirmedAt: 220 * I};
+ candles[signal.first].high = 15;
+ candles[signal.second].high = 16;
+ const result = {candles, indicators};
+ const chart = chartWindow(result, signal);
+ const start = signal.first - 12;
+ assert.equal(chart.candles[0], candles[start]);
+ assert.equal(chart.candles[chart.first], candles[signal.first]);
+ assert.equal(chart.candles[chart.second], candles[signal.second]);
+ assert.equal(chart.candles[chart.confirmed].time + I, signal.confirmedAt);
+ assert.deepEqual(chart.obv, indicators.obv.slice(start));
+ assert.deepEqual(chart.co, indicators.co.slice(start));
+ const svg = signalChart(result, signal);
+ assert.match(svg, /class="signal-chart short"/);
+ assert.match(svg, /data-value="15" data-pivot="1"/);
+ assert.match(svg, /data-value="16" data-pivot="2"/);
+ assert.equal((svg.match(/class="plot-confirm" d="M252 /g) ?? []).length, 3);
 });
