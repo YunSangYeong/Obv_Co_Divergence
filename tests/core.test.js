@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { obv } from '../src/indicators/obv.js';
 import { ema, chaikin } from '../src/indicators/chaikin.js';
 import { pivots } from '../src/indicators/pivots.js';
-import { detect, INTERVAL as I } from '../src/indicators/divergence.js';
+import { analyze, detect, INTERVAL as I } from '../src/indicators/divergence.js';
 import { Bybit, candlesFrom } from '../src/api/bybit.js';
 import { Scanner } from '../src/scanner/scanner.js';
 import { chartLinks } from '../src/utils/format.js';
-import { chartWindow, signalChart } from '../src/chart.js';
+import { chartBounds, chartWindow, signalChart } from '../src/chart.js';
 const bars = n => Array.from({length:n},(_,i)=>({time:i*I,open:10,high:12,low:8,close:10,volume:10}));
 function fixture(side='LONG') {
   const c=bars(40), ov=Array(40).fill(0),co=Array(40).fill(0), field=side==='LONG'?'low':'high';
@@ -106,24 +106,48 @@ test('market filtering precedes kline calls, counters and results follow selecte
  }
 });
 
-test('chart window keeps the full pivot gap, precomputed indicators and final confirmation', () => {
+test('50-bar chart windows preserve precomputed values and reach both pivots and confirmation', () => {
  const candles = bars(220);
- const indicators = {obv: candles.map((_, i) => 1000 + i), co: candles.map((_, i) => -i / 10)};
+ const indicators = {
+  obv: candles.map((_, i) => 1000 + i),
+  co: candles.map((_, i) => -i / 10),
+  ema200: candles.map((_, i) => 11 + i / 1000)
+ };
  const signal = {side: 'SHORT', first: 134, second: 214, age: 0, confirmedAt: 220 * I};
  candles[signal.first].high = 15;
  candles[signal.second].high = 16;
  const result = {candles, indicators};
+ const bounds = chartBounds(candles, signal);
+ assert.deepEqual(bounds, {first: 122, last: 170, initial: 170});
  const chart = chartWindow(result, signal);
- const start = signal.first - 12;
- assert.equal(chart.candles[0], candles[start]);
- assert.equal(chart.candles[chart.first], candles[signal.first]);
+ assert.equal(chart.candles.length, 50);
  assert.equal(chart.candles[chart.second], candles[signal.second]);
  assert.equal(chart.candles[chart.confirmed].time + I, signal.confirmedAt);
- assert.deepEqual(chart.obv, indicators.obv.slice(start));
- assert.deepEqual(chart.co, indicators.co.slice(start));
+ for (const key of Object.keys(indicators)) {
+  assert.deepEqual(chart[key], indicators[key].slice(170));
+ }
+ const earlier = chartWindow(result, signal, bounds.first);
+ assert.equal(earlier.candles.length, 50);
+ assert.equal(earlier.candles[earlier.first], candles[signal.first]);
  const svg = signalChart(result, signal);
  assert.match(svg, /class="signal-chart short"/);
- assert.match(svg, /data-value="15" data-pivot="1"/);
+ assert.match(svg, /class="plot-ema"/);
  assert.match(svg, /data-value="16" data-pivot="2"/);
+ assert.doesNotMatch(svg, /data-pivot="1"/);
  assert.equal((svg.match(/class="plot-confirm" d="M252 /g) ?? []).length, 3);
+ const earlySvg = signalChart(result, signal, bounds.first);
+ assert.match(earlySvg, /data-value="15" data-pivot="1"/);
+ assert.doesNotMatch(earlySvg, /class="plot-confirm"|data-pivot="2"/);
+});
+
+test('EMA 200 uses all confirmed 15-minute closes before chart slicing', () => {
+ const candles = bars(500);
+ Object.assign(candles[480], {low: 6, close: 7, volume: 100});
+ Object.assign(candles[490], {low: 5, close: 11, volume: 100});
+ const result = analyze(candles, 'LONG');
+ assert.ok(result.signals.length);
+ const chart = chartWindow(result, result.signals[0]);
+ const alpha = 2 / 201;
+ const expected = 10 - 3 * alpha * (1 - alpha) ** 19 + alpha * (1 - alpha) ** 9;
+ assert.ok(Math.abs(chart.ema200.at(-1) - expected) < 1e-12);
 });

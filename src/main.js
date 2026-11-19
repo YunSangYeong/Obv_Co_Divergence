@@ -1,5 +1,5 @@
 import './style.css';
-import { signalChart } from './chart.js';
+import { chartBounds, signalChart } from './chart.js';
 import { MARKET_LABELS, loadMarket, saveMarket } from './scanner/market.js';
 import { Scanner } from './scanner/scanner.js';
 import { kst, number, chartLinks } from './utils/format.js';
@@ -44,16 +44,40 @@ function createCard(result) {
   card.innerHTML = `<a class="card-title" href="${escape(links.tv ?? links.bybit)}" target="_blank" rel="noopener noreferrer"><h2>${escape(symbol)}</h2><span class="side"></span></a>
     <div class="price">${number(price)} <small>USDT</small></div><p class="hint">24H 거래대금 ${(turnover / 1e6).toFixed(2)}M USDT</p>
     ${signals.length > 1 ? `<label class="signal-picker">확정 신호<select>${signals.map((s, i) => `<option value="${i}">${i === 0 ? '최신 · ' : ''}${s.side} · ${kst(s.confirmedAt)}</option>`).join('')}</select></label>` : ''}
-    <div class="signal-view"></div>
+    <div class="signal-details"></div>
+    <div class="chart-controls" role="group" aria-label="50봉 차트 구간">
+      <button type="button" data-shift="-25">← 이전 봉</button>
+      <button type="button" data-shift="25">이후 봉 →</button>
+    </div>
+    <div class="signal-view" aria-live="polite"></div>
     <div class="links">${links.tv ? `<a href="${escape(links.tv)}" target="_blank" rel="noopener noreferrer">TradingView ↗</a>` : ''}<a href="${escape(links.bybit)}" target="_blank" rel="noopener noreferrer">Bybit 거래 화면 ↗</a></div>
     <p class="hint">차트에서 종목이 지원되지 않으면 Bybit 링크를 이용하세요.</p>`;
   const side = card.querySelector('.side');
   const view = card.querySelector('.signal-view');
+  const details = card.querySelector('.signal-details');
+  const controls = card.querySelector('.chart-controls');
+  const previous = controls.firstElementChild;
+  const next = controls.lastElementChild;
+  let signal, bounds, start;
+  const drawChart = () => {
+    view.innerHTML = signalChart(result, signal, start);
+    previous.disabled = start === bounds.first;
+    next.disabled = start === bounds.last;
+  };
+  controls.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    start = Math.max(bounds.first, Math.min(bounds.last, start + Number(button.dataset.shift)));
+    drawChart();
+  });
   const selectSignal = index => {
-    const signal = signals[index];
+    signal = signals[index];
+    bounds = chartBounds(result.candles, signal);
+    start = bounds.initial;
     side.className = `side ${signal.side.toLowerCase()}`;
     side.textContent = signal.side;
-    view.innerHTML = signalDetails(signal) + signalChart(result, signal);
+    details.innerHTML = signalDetails(signal);
+    drawChart();
   };
   card.querySelector('select')?.addEventListener('change', event => selectSignal(Number(event.target.value)));
   selectSignal(0);

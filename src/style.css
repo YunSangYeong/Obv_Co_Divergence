@@ -10,7 +10,7 @@
 .signal-chart { margin: 0 0 14px; border: 1px solid #34445c; border-radius: 9px; background: #0c1422; color: #a9b9d0; overflow: hidden; }
 .signal-chart.long { --signal-color: #64dfae; }
 .signal-chart.short { --signal-color: #ff8d9e; }
-.signal-chart svg { display: block; width: 100%; height: auto; font-size: 11px; touch-action: pan-y pinch-zoom; }
+.signal-chart > svg { display: block; width: 100%; height: auto; font-size: 11px; touch-action: pan-y pinch-zoom; }
 .signal-chart text { fill: currentColor; font-variant-numeric: tabular-nums; }
 .signal-chart .plot-title { fill: #e9eef6; font-weight: 700; }
 .plot-grid { stroke: #2c394e; stroke-width: 0.7; }
@@ -22,4 +22,9 @@
 .plot-divergence { stroke: var(--signal-color); stroke-width: 2; }
 .plot-pivot { fill: var(--signal-color); stroke: #0c1422; stroke-width: 0.8; }
 .signal-chart figcaption { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 8px 9px; font-size: 11px; line-height: 1.5; }
-.signal-chart figcaption span:first-child { color: var(--signal-color); }
+.signal-chart .pivot-label { color: var(--signal-color); }
+.plot-ema { fill: none; stroke: #ffc45f; stroke-width: 1.7; }
+.signal-chart .ema-label { color: #ffc45f; }
+.chart-controls { display: flex; gap: 8px; margin-bottom: 8px; }
+.chart-controls button { min-height: 44px; background: #22334c; color: #dceaff; font-size: 12px; }
+.chart-controls button:disabled { cursor: default; }

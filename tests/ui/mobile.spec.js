@@ -12,10 +12,10 @@ test('mobile initial no requests, error handling and controls',async({page})=>{
 test('cancel active request',async({page})=>{
  await page.route('https://api.bybit.com/**',()=>{});await page.goto('/');await page.click('#start');await page.click('#cancel');await expect(page.locator('#status')).toContainText('사용자가 검색을 취소');await expect(page.locator('#start')).toBeEnabled();
 });
-async function routeCandles(page, { beforeOther } = {}) {
+async function routeCandles(page, { beforeOther, longGap } = {}) {
  const interval = 900000;
  const rows = Array.from({length: 501}, (_, i) => [i * interval, 10, 12, 8, 10, 10, 100].map(String));
- for (const [i, low, close, volume] of [[478, 6, 7, 100], [485, 8, 8, 10], [486, 5, 9, 100], [494, 4, 11, 100], [500, 1, 2, 9999]]) {
+ for (const [i, low, close, volume] of [[longGap ? 414 : 478, 6, 7, 100], [485, 8, 8, 10], [486, 5, 9, 100], [494, 4, 11, 100], [500, 1, 2, 9999]]) {
   rows[i] = [i * interval, 10, 12, low, close, volume, 100].map(String);
  }
  rows.reverse();
@@ -60,7 +60,9 @@ test('mobile card uses confirmed scanner data and preserves earlier signal throu
    await expect(line).toHaveAttribute('y2', positions[1][2]);
    await expect(panel.locator('.plot-confirm')).toHaveAttribute('d', /^M252 /);
   }
-  await expect(chart.locator('.plot-candle')).toHaveCount(26);
+  await expect(chart.locator('.plot-candle')).toHaveCount(50);
+  await expect(chart.locator('[data-panel="가격 · 15분"] .plot-ema')).toBeVisible();
+  expect((await chart.locator('.plot-ema').getAttribute('points')).split(' ')).toHaveLength(50);
   await expect(chart.locator('text').filter({hasText: /^KST$/})).toBeVisible();
   await expect(card.locator('figcaption')).toContainText('14:00:00 KST');
   await expect(chart.locator('.plot-divergence').first()).toHaveCSS('stroke', 'rgb(100, 223, 174)');
@@ -68,7 +70,7 @@ test('mobile card uses confirmed scanner data and preserves earlier signal throu
   await select.focus();
   await expect(card.locator('figcaption')).toContainText('12:00:00 KST');
   await expect(chart.locator('[data-panel="가격 · 15분"] .plot-pivot').first()).toHaveAttribute('data-value', '6');
-  await expect(chart.locator('.plot-confirm').first()).not.toHaveAttribute('d', /^M252 /);
+  await expect(chart.locator('.plot-confirm').first()).toHaveAttribute('d', "M212.96 22V114");
   await chart.evaluate(node => { node.dataset.preserved = 'yes'; });
   await expect(page.locator('#status')).toContainText(/경과 시간[1-9][0-9]*\.[0-9]초/);
   await expect(chart).toHaveAttribute('data-preserved', 'yes');
@@ -91,13 +93,25 @@ test('production assets load and refresh under GitHub Pages subpath',async({page
   try{const path=req.url.replace(/^\/Obv_Co_Divergence\//,'');if(path===req.url){res.writeHead(404).end();return;}const file=path||'index.html';const data=await readFile(`dist/${file}`);res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(data);}catch{res.writeHead(404).end();}
  });await new Promise(resolve=>server.listen(4180,'127.0.0.1',resolve));
  try{
-  await routeCandles(page);
+  await routeCandles(page, {longGap: true});
   await page.goto('http://127.0.0.1:4180/Obv_Co_Divergence/');
   await page.reload();
   await page.click('#start');
   await expect(page.locator('#status')).toContainText('검색 완료');
   await expect(page.getByRole('img', {name: /LONG 가격, OBV, CO/})).toBeVisible();
   await expect(page.locator('.plot-divergence')).toHaveCount(3);
+  await page.getByLabel('확정 신호').selectOption('1');
+  const price = page.locator('[data-panel="가격 · 15분"]');
+  const first = price.locator('[data-pivot="1"]');
+  await expect(first).toHaveCount(0);
+  await expect(price.locator('.plot-confirm')).toHaveAttribute('d', /^M252 /);
+  const earlier = page.getByRole('button', {name: '이전 봉'});
+  await earlier.click();
+  await earlier.click();
+  await expect(first).toHaveAttribute('data-value', '6');
+  await expect(price.locator('.plot-candle')).toHaveCount(50);
+  await expect(price.locator('.plot-ema')).toBeVisible();
+  await expect(earlier).toBeDisabled();
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
 test('market buttons filter requests, persist selection and lock during scan',async({page})=>{

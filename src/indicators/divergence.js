@@ -1,11 +1,13 @@
 import { obv } from './obv.js';
-import { chaikin } from './chaikin.js';
+import { chaikin, ema } from './chaikin.js';
 import { pivots } from './pivots.js';
 export const INTERVAL = 900000;
 
 export function analyze(candles, direction) {
   const indicators = { obv: obv(candles), co: chaikin(candles) };
-  return { candles, indicators, signals: detect(candles, { direction, indicators }) };
+  const signals = detect(candles, { direction, indicators });
+  if (signals.length) indicators.ema200 = ema(candles.map(candle => candle.close), 200);
+  return { candles, indicators, signals };
 }
 
 export function detect(candles, { direction = 'ALL', recent = 10, warmup = 100, minGap = 5, maxGap = 80, left = 5, right = 5, indicators } = {}) {
