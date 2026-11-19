@@ -106,13 +106,23 @@ test('production assets load and refresh under GitHub Pages subpath',async({page
   const first = price.locator('[data-pivot="1"]');
   await expect(first).toHaveCount(0);
   await expect(price.locator('.plot-confirm')).toHaveAttribute('d', /^M252 /);
-  const earlier = page.getByRole('button', {name: '이전 봉'});
-  await earlier.click();
-  await earlier.click();
+  await expect(page.locator('.card button')).toHaveCount(0);
+  const chartView = page.locator('.signal-view');
+  const chart = chartView.getByRole('img', {name: /LONG 가격, OBV, CO/});
+  await chart.scrollIntoViewIfNeeded();
+  const box = await chart.boundingBox();
+  const session = await page.context().newCDPSession(page);
+  const touch = async (type, points) => session.send('Input.dispatchTouchEvent', {type, touchPoints: points});
+  const origin = {x: box.x + 30, y: box.y + 70};
+  await touch('touchStart', [origin]);
+  await touch('touchMove', [{...origin, x: origin.x + 100}]);
+  await touch('touchEnd', []);
+  await chartView.press('ArrowLeft');
   await expect(first).toHaveAttribute('data-value', '6');
   await expect(price.locator('.plot-candle')).toHaveCount(50);
   await expect(price.locator('.plot-ema')).toBeVisible();
-  await expect(earlier).toBeDisabled();
+  await chartView.press('ArrowRight');
+  await expect(first).toHaveCount(0);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
 test('market buttons filter requests, persist selection and lock during scan',async({page})=>{

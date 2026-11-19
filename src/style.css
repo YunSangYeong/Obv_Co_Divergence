@@ -25,6 +25,5 @@
 .signal-chart .pivot-label { color: var(--signal-color); }
 .plot-ema { fill: none; stroke: #ffc45f; stroke-width: 1.7; }
 .signal-chart .ema-label { color: #ffc45f; }
-.chart-controls { display: flex; gap: 8px; margin-bottom: 8px; }
-.chart-controls button { min-height: 44px; background: #22334c; color: #dceaff; font-size: 12px; }
-.chart-controls button:disabled { cursor: default; }
+.signal-view:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+.signal-view[tabindex="0"] .signal-chart > svg { cursor: grab; user-select: none; }

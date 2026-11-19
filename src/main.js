@@ -45,35 +45,45 @@ function createCard(result) {
     <div class="price">${number(price)} <small>USDT</small></div><p class="hint">24H 거래대금 ${(turnover / 1e6).toFixed(2)}M USDT</p>
     ${signals.length > 1 ? `<label class="signal-picker">확정 신호<select>${signals.map((s, i) => `<option value="${i}">${i === 0 ? '최신 · ' : ''}${s.side} · ${kst(s.confirmedAt)}</option>`).join('')}</select></label>` : ''}
     <div class="signal-details"></div>
-    <div class="chart-controls" role="group" aria-label="50봉 차트 구간">
-      <button type="button" data-shift="-25">← 이전 봉</button>
-      <button type="button" data-shift="25">이후 봉 →</button>
-    </div>
-    <div class="signal-view" aria-live="polite"></div>
+    <div class="signal-view" role="group" aria-label="50봉 차트. 좌우로 밀거나 방향키로 구간 이동" aria-live="polite"></div>
     <div class="links">${links.tv ? `<a href="${escape(links.tv)}" target="_blank" rel="noopener noreferrer">TradingView ↗</a>` : ''}<a href="${escape(links.bybit)}" target="_blank" rel="noopener noreferrer">Bybit 거래 화면 ↗</a></div>
     <p class="hint">차트에서 종목이 지원되지 않으면 Bybit 링크를 이용하세요.</p>`;
   const side = card.querySelector('.side');
   const view = card.querySelector('.signal-view');
   const details = card.querySelector('.signal-details');
-  const controls = card.querySelector('.chart-controls');
-  const previous = controls.firstElementChild;
-  const next = controls.lastElementChild;
-  let signal, bounds, start;
-  const drawChart = () => {
-    view.innerHTML = signalChart(result, signal, start);
-    previous.disabled = start === bounds.first;
-    next.disabled = start === bounds.last;
-  };
-  controls.addEventListener('click', event => {
-    const button = event.target.closest('button');
-    if (!button) return;
-    start = Math.max(bounds.first, Math.min(bounds.last, start + Number(button.dataset.shift)));
+  let signal, bounds, start, drag;
+  const drawChart = () => { view.innerHTML = signalChart(result, signal, start); };
+  const shiftChart = offset => {
+    const next = Math.max(bounds.first, Math.min(bounds.last, start + offset));
+    if (start === next) return;
+    start = next;
     drawChart();
+  };
+  view.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    shiftChart(event.key === 'ArrowLeft' ? -25 : 25);
+  });
+  view.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0 || bounds.first === bounds.last || !event.target.closest('svg')) return;
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    view.setPointerCapture(drag.id);
+  });
+  view.addEventListener('lostpointercapture', event => {
+    if (event.pointerId === drag?.id) drag = undefined;
+  });
+  view.addEventListener('pointerup', event => {
+    if (event.pointerId !== drag?.id) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    drag = undefined;
+    if (Math.abs(dx) >= 30 && Math.abs(dx) > Math.abs(dy)) shiftChart(dx > 0 ? -25 : 25);
   });
   const selectSignal = index => {
     signal = signals[index];
     bounds = chartBounds(result.candles, signal);
     start = bounds.initial;
+    view.tabIndex = bounds.first < bounds.last ? 0 : -1;
     side.className = `side ${signal.side.toLowerCase()}`;
     side.textContent = signal.side;
     details.innerHTML = signalDetails(signal);
