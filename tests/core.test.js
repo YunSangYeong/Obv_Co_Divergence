@@ -111,7 +111,7 @@ test('50-bar chart windows preserve precomputed values and reach both pivots and
  const indicators = {
   obv: candles.map((_, i) => 1000 + i),
   co: candles.map((_, i) => -i / 10),
-  ema200: candles.map((_, i) => 11 + i / 1000)
+  ema: candles.map((_, i) => 11 + i / 1000)
  };
  const signal = {side: 'SHORT', first: 134, second: 214, age: 0, confirmedAt: 220 * I};
  candles[signal.first].high = 15;
@@ -140,14 +140,14 @@ test('50-bar chart windows preserve precomputed values and reach both pivots and
  assert.doesNotMatch(earlySvg, /class="plot-confirm"|data-pivot="2"/);
 });
 
-test('EMA 200 uses all confirmed 15-minute closes before chart slicing', () => {
+test('EMA 80 uses all confirmed 15-minute closes before chart slicing', () => {
  const candles = bars(500);
  Object.assign(candles[480], {low: 6, close: 7, volume: 100});
  Object.assign(candles[490], {low: 5, close: 11, volume: 100});
  const result = analyze(candles, 'LONG');
  assert.ok(result.signals.length);
  const chart = chartWindow(result, result.signals[0]);
- const alpha = 2 / 201;
+ const alpha = 2 / 81;
  const expected = 10 - 3 * alpha * (1 - alpha) ** 19 + alpha * (1 - alpha) ** 9;
- assert.ok(Math.abs(chart.ema200.at(-1) - expected) < 1e-12);
+ assert.ok(Math.abs(chart.ema.at(-1) - expected) < 1e-12);
 });

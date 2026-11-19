@@ -62,6 +62,7 @@ test('mobile card uses confirmed scanner data and preserves earlier signal throu
   }
   await expect(chart.locator('.plot-candle')).toHaveCount(50);
   await expect(chart.locator('[data-panel="가격 · 15분"] .plot-ema')).toBeVisible();
+  await expect(card.locator(".ema-label")).toContainText("EMA 80 · 15분");
   expect((await chart.locator('.plot-ema').getAttribute('points')).split(' ')).toHaveLength(50);
   await expect(chart.locator('text').filter({hasText: /^KST$/})).toBeVisible();
   await expect(card.locator('figcaption')).toContainText('14:00:00 KST');

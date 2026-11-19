@@ -1,4 +1,4 @@
-import { INTERVAL } from './indicators/divergence.js';
+import { CHART_EMA_PERIOD, INTERVAL } from './indicators/divergence.js';
 import { kst } from './utils/format.js';
 
 const WINDOW_SIZE = 50;
@@ -16,7 +16,7 @@ export function chartWindow({ candles, indicators }, signal, start = chartBounds
     candles: candles.slice(start, end),
     obv: indicators.obv.slice(start, end),
     co: indicators.co.slice(start, end),
-    ema200: indicators.ema200.slice(start, end),
+    ema: indicators.ema.slice(start, end),
     first: signal.first - start,
     second: signal.second - start,
     confirmed: candles.length - 1 - signal.age - start,
@@ -70,13 +70,13 @@ export function signalChart(result, signal, start) {
   const candleWidth = step * 0.65;
   const price = panel({
     label: '가격 · 15분', top: 22, bottom: 114, x, confirmation, visible,
-    values: [...candles.flatMap(bar => [bar.low, bar.high]), ...data.ema200],
+    values: [...candles.flatMap(bar => [bar.low, bar.high]), ...data.ema],
     points: pivotValues(result.candles[signal.first][priceField], result.candles[signal.second][priceField]),
     draw: y => candles.map((bar, i) => {
       const body = Math.min(y(bar.open), y(bar.close));
       const height = Math.max(0.75, Math.abs(y(bar.open) - y(bar.close)));
       return `<path class="plot-candle ${bar.close >= bar.open ? 'up' : 'down'}" d="M${x(i)} ${y(bar.high)}V${y(bar.low)} M${x(i) - candleWidth / 2} ${body}h${candleWidth}v${height}h-${candleWidth}Z"/>`;
-    }).join('') + `<polyline class="plot-ema" points="${line(data.ema200, y)}"/>`,
+    }).join('') + `<polyline class="plot-ema" points="${line(data.ema, y)}"/>`,
   });
   const linePanel = (label, key, top, bottom) => panel({
     label, top, bottom, values: data[key], x, confirmation, visible,
@@ -95,6 +95,6 @@ export function signalChart(result, signal, start) {
       ${ticks.map(([px, time, anchor]) => `<text x="${px}" y="277" text-anchor="${anchor}">${axisTime.format(time).replace(',', '')}</text>`).join('')}
       <text x="258" y="277">KST</text>
     </svg>
-    <figcaption><span class="ema-label">━ EMA 200 · 15분</span><span class="pivot-label">● 피벗 2개 · 연결선은 다이버전스</span><span>┊ 확정 ${kst(signal.confirmedAt)}</span></figcaption>
+    <figcaption><span class="ema-label">━ EMA ${CHART_EMA_PERIOD} · 15분</span><span class="pivot-label">● 피벗 2개 · 연결선은 다이버전스</span><span>┊ 확정 ${kst(signal.confirmedAt)}</span></figcaption>
   </figure>`;
 }

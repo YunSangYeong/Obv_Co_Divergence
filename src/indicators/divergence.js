@@ -2,11 +2,12 @@ import { obv } from './obv.js';
 import { chaikin, ema } from './chaikin.js';
 import { pivots } from './pivots.js';
 export const INTERVAL = 900000;
+export const CHART_EMA_PERIOD = 80;
 
 export function analyze(candles, direction) {
   const indicators = { obv: obv(candles), co: chaikin(candles) };
   const signals = detect(candles, { direction, indicators });
-  if (signals.length) indicators.ema200 = ema(candles.map(candle => candle.close), 200);
+  if (signals.length) indicators.ema = ema(candles.map(candle => candle.close), CHART_EMA_PERIOD);
   return { candles, indicators, signals };
 }
 
