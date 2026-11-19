@@ -1,4 +1,4 @@
-# OBV + CO DUAL DIVERGENCE V1.0
+# OBV + CO Dual Divergence & Trend Following
 
 Bybit USDT 무기한 선물의 15분봉에서 OBV와 Chaikin Oscillator가 **동일한 가격 피벗**에 대해 함께 나타내는 일반 다이버전스를 찾는 독립형 정적 웹 앱입니다. 자동매매 기능은 없습니다. API 키·로그인·DB·백엔드가 필요하지 않습니다.
 
